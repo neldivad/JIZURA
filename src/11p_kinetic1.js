@@ -3,6 +3,7 @@
 'use strict';
 const E = J.E;
 const P = 'kinetic';
+J.KINETIC_ONSET_HOOK = true;                            // hosts can feature-test the hook below
 const DEG = J.DEG, TAU = J.TAU, clamp = J.clamp, lerp = J.lerp;
 const reg = (key, def) => J.register('layout', key, Object.assign(def, { set: 'kinetic' }), P);
 
@@ -49,11 +50,12 @@ function splitUnit(s) {
   const parts = J.splitLines(t, Math.ceil(n / 2)).split('\n');
   return parts.length >= 2 ? [parts[0], parts.slice(1).join('')] : [t];
 }
+let lastUnits = null;                                   // the units render() just asked for (it calls onsets() next)
 function unitsOf(cut, maxU = 6, minU = 1) {
   const text = String(cut.text || '');
   const key = text + '\u0002' + (cut.words || []).join('\u0001') + '\u0002' + maxU + ':' + minU;
   let w = unitCache.get(key);
-  if (w) return w;
+  if (w) return (lastUnits = w);
   const lat = hasLatin(text);
   w = (cut.words && cut.words.length ? cut.words : (J.chunkText ? J.chunkText(text) : text.split(/\s+/))).map(s => String(s).trim()).filter(Boolean);
   if (strip(w.join('')) !== strip(text)) w = J.chunkText ? J.chunkText(text).map(s => String(s).trim()).filter(Boolean) : [text.trim()];
@@ -73,13 +75,16 @@ function unitsOf(cut, maxU = 6, minU = 1) {
   }
   if (unitCache.size > 400) unitCache.clear();
   unitCache.set(key, w);
-  return w;
+  return (lastUnits = w);
 }
 
 /* ---- word clock: onset time of each unit inside the cut (locked to beats when they fall close) ---- */
 const clockCache = new WeakMap();
 function onsets(env, n, o = {}) {
   const c = env.cut;
+  // a host can time the word units itself (e.g. on their sung onsets): J.kineticOnsets(env, units, o) returns n times
+  // in seconds from the cut start, or null for the beat clock below
+  if (J.kineticOnsets && lastUnits && lastUnits.length === n) { const v = J.kineticOnsets(env, lastUnits, o); if (v && v.length === n) return v; }
   let m = clockCache.get(c);
   if (!m) { m = new Map(); clockCache.set(c, m); }
   const frac = o.frac || 0.5, gap = o.gap || 0.38, t0 = o.t0 || 0;
